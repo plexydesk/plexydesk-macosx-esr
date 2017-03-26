@@ -1,0 +1,199 @@
+From a95e014ef45592e67827833cbed656327c9d9a56 Mon Sep 17 00:00:00 2001
+From: Siraj Razick <siraj@Siraj-Razicks-iMac.local>
+Date: Sun, 19 Mar 2017 07:15:35 -0400
+Subject: [PATCH] [qt48] Compile fixes for Mac OS X 10.4
+
+Make Qt 4.8 build with  Mac OS X 10.4
+---
+ configure                                 |  2 +-
+ mkspecs/common/g++-macx.conf              |  4 ++--
+ src/corelib/io/qfilesystemengine.cpp      |  2 +-
+ src/corelib/io/qfilesystemengine_unix.cpp |  4 ++++
+ src/gui/dialogs/qfontdialog_mac.mm        | 21 +++++++++++++++++++--
+ src/gui/painting/qprintengine_mac.mm      |  2 ++
+ src/gui/text/qfontdatabase_mac.cpp        |  6 +++++-
+ src/network/kernel/qnetworkproxy_mac.cpp  |  2 ++
+ 8 files changed, 36 insertions(+), 7 deletions(-)
+
+diff --git a/configure b/configure
+index 10ad7ca0b0..84df8c718d 100755
+--- a/configure
++++ b/configure
+@@ -5014,7 +5014,7 @@ if true; then ###[ '!' -f "$outpath/bin/qmake" ];
+                 ;;
+             *)
+                 # For all other configurations require a minimum of 10.5
+-                echo "export MACOSX_DEPLOYMENT_TARGET = 10.5" >> "$mkfile"
++                echo "export MACOSX_DEPLOYMENT_TARGET = 10.4" >> "$mkfile"
+                 ;;
+             esac
+ 
+diff --git a/mkspecs/common/g++-macx.conf b/mkspecs/common/g++-macx.conf
+index 22511573c1..ccaec74885 100644
+--- a/mkspecs/common/g++-macx.conf
++++ b/mkspecs/common/g++-macx.conf
+@@ -16,8 +16,8 @@ QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO += -g $$QMAKE_CFLAGS_DWARF2
+ 
+ QMAKE_LFLAGS_STATIC_LIB += -all_load
+ 
+-QMAKE_CFLAGS_X86_64 += -Xarch_x86_64 -mmacosx-version-min=10.5
+-QMAKE_CFLAGS_PPC_64 += -Xarch_ppc64 -mmacosx-version-min=10.5
++QMAKE_CFLAGS_X86_64 += -Xarch_x86_64 -mmacosx-version-min=10.4
++QMAKE_CFLAGS_PPC_64 += -Xarch_ppc64 -mmacosx-version-min=10.4
+ 
+ QMAKE_CXXFLAGS_X86_64         = $$QMAKE_CFLAGS_X86_64
+ QMAKE_CXXFLAGS_PPC_64         = $$QMAKE_CFLAGS_PPC_64
+diff --git a/src/corelib/io/qfilesystemengine.cpp b/src/corelib/io/qfilesystemengine.cpp
+index 95e54cbb6e..d62abb1892 100644
+--- a/src/corelib/io/qfilesystemengine.cpp
++++ b/src/corelib/io/qfilesystemengine.cpp
+@@ -281,7 +281,7 @@ void QFileSystemMetaData::fillFromStatBuf(const QT_STATBUF &statBuffer)
+     entryFlags |= QFileSystemMetaData::ExistsAttribute;
+     size_ = statBuffer.st_size;
+ #if !defined(QWS) && !defined(Q_WS_QPA) && defined(Q_OS_MAC) \
+-        && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5
++        && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_6
+     if (statBuffer.st_flags & UF_HIDDEN) {
+         entryFlags |= QFileSystemMetaData::HiddenAttribute;
+         knownFlagsMask |= QFileSystemMetaData::HiddenAttribute;
+diff --git a/src/corelib/io/qfilesystemengine_unix.cpp b/src/corelib/io/qfilesystemengine_unix.cpp
+index 4a9049b4cc..e83c3defc2 100644
+--- a/src/corelib/io/qfilesystemengine_unix.cpp
++++ b/src/corelib/io/qfilesystemengine_unix.cpp
+@@ -92,11 +92,13 @@ static bool isPackage(const QFileSystemMetaData &data, const QFileSystemEntry &e
+     QString suffix = info.suffix();
+ 
+     if (suffix.length() > 0) {
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+         // First step: is the extension known ?
+         CFStringRef extensionRef = QCFString::toCFStringRef(suffix);
+         CFStringRef uniformTypeIdentifier = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, extensionRef, NULL);
+         if (UTTypeConformsTo(uniformTypeIdentifier, kUTTypeBundle))
+             return true;
++#endif
+ 
+         // Second step: check if an application knows the package type
+         CFStringRef path = QCFString::toCFStringRef(entry.filePath());
+@@ -107,6 +109,7 @@ static bool isPackage(const QFileSystemMetaData &data, const QFileSystemEntry &e
+         if (CFBundleGetPackageInfoInDirectory(url, &type, &creator))
+             return true;
+ 
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+         // Find if an application other than Finder claims to know how to handle the package
+         QCFType<CFURLRef> application;
+         LSGetApplicationForURL(url,
+@@ -121,6 +124,7 @@ static bool isPackage(const QFileSystemMetaData &data, const QFileSystemEntry &e
+             if (applicationId != QLatin1String("com.apple.finder"))
+                 return true;
+         }
++#endif
+     }
+ 
+     // Third step: check if the directory has the package bit set
+diff --git a/src/gui/dialogs/qfontdialog_mac.mm b/src/gui/dialogs/qfontdialog_mac.mm
+index d557a7a286..387a62f8b1 100644
+--- a/src/gui/dialogs/qfontdialog_mac.mm
++++ b/src/gui/dialogs/qfontdialog_mac.mm
+@@ -141,16 +141,33 @@ static QFont qfontForCocoaFont(NSFont *cocoaFont, const QFont &resolveFont)
+     QFont newFont;
+     if (cocoaFont) {
+         int pSize = qRound([cocoaFont pointSize]);
++	QString family;
++        QString style;
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+         CTFontDescriptorRef font = CTFontCopyFontDescriptor((CTFontRef)cocoaFont);
+         // QCoreTextFontDatabase::populateFontDatabase() is using localized names
+-        QString family = QCFString::toQString((CFStringRef) CTFontDescriptorCopyLocalizedAttribute(font, kCTFontFamilyNameAttribute, NULL));
+-        QString style = QCFString::toQString((CFStringRef) CTFontDescriptorCopyLocalizedAttribute(font, kCTFontStyleNameAttribute, NULL));
++        family = QCFString::toQString((CFStringRef) CTFontDescriptorCopyLocalizedAttribute(font, kCTFontFamilyNameAttribute, NULL));
++        style = QCFString::toQString((CFStringRef) CTFontDescriptorCopyLocalizedAttribute(font, kCTFontStyleNameAttribute, NULL));
++#endif
++
++#if MAC_OS_X_VERSION_MIN_REQUIRED <= MAC_OS_X_VERSION_10_4
++   	family = (qt_mac_NSStringToQString([cocoaFont familyName]));
++     	style = (qt_mac_NSStringToQString([cocoaFont fontName]));
+ 
++        int hyphenPos = style.indexOf(QLatin1Char('-'));
++        if (hyphenPos != -1) {
++            style.remove(0, hyphenPos + 1);
++        } else {
++            style = QLatin1String("Normal");
++        }
++#endif
+         newFont = QFontDatabase().font(family, style, pSize);
+         newFont.setUnderline(resolveFont.underline());
+         newFont.setStrikeOut(resolveFont.strikeOut());
+ 
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+         CFRelease(font);
++#endif
+     }
+     return newFont;
+ }
+diff --git a/src/gui/painting/qprintengine_mac.mm b/src/gui/painting/qprintengine_mac.mm
+index 475a9ff3a9..cb3b73380f 100644
+--- a/src/gui/painting/qprintengine_mac.mm
++++ b/src/gui/painting/qprintengine_mac.mm
+@@ -181,6 +181,7 @@ void QMacPrintEnginePrivate::setPaperSize(QPrinter::PaperSize ps)
+                 }
+             }
+         } else {
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+             QCFString paperId = QCFString::toCFStringRef(QUuid::createUuid().toString());
+             PMPaperMargins paperMargins;
+             paperMargins.left = leftMargin;
+@@ -195,6 +196,7 @@ void QMacPrintEnginePrivate::setPaperSize(QPrinter::PaperSize ps)
+                 // Don't know, warn for the moment.
+                 qWarning("QMacPrintEngine, problem setting paper name");
+             }
++#endif
+         }
+     }
+ }
+diff --git a/src/gui/text/qfontdatabase_mac.cpp b/src/gui/text/qfontdatabase_mac.cpp
+index 816a7bdbcd..fd2e10359d 100644
+--- a/src/gui/text/qfontdatabase_mac.cpp
++++ b/src/gui/text/qfontdatabase_mac.cpp
+@@ -546,6 +546,9 @@ bool QFontDatabase::supportsThreadedFontRendering()
+ 
+ QString QFontDatabase::resolveFontFamilyAlias(const QString &family)
+ {
++    QCFString familyName = QCFString("");
++
++#if defined(QT_MAC_USE_COCOA) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5
+     QCFString expectedFamily = QCFString(family);
+ 
+     QCFType<CFMutableDictionaryRef> attributes = CFDictionaryCreateMutable(NULL, 0,
+@@ -561,7 +564,8 @@ QString QFontDatabase::resolveFontFamilyAlias(const QString &family)
+     if (!matched)
+         return family;
+ 
+-    QCFString familyName = (CFStringRef) CTFontDescriptorCopyLocalizedAttribute(matched, kCTFontFamilyNameAttribute, NULL);
++    familyName = (CFStringRef) CTFontDescriptorCopyLocalizedAttribute(matched, kCTFontFamilyNameAttribute, NULL);
++#endif
+     return familyName;
+ }
+ 
+diff --git a/src/network/kernel/qnetworkproxy_mac.cpp b/src/network/kernel/qnetworkproxy_mac.cpp
+index 88a6f9c492..efc162d31b 100644
+--- a/src/network/kernel/qnetworkproxy_mac.cpp
++++ b/src/network/kernel/qnetworkproxy_mac.cpp
+@@ -156,6 +156,7 @@ static QNetworkProxy proxyFromDictionary(CFDictionaryRef dict)
+     QString user;
+     QString password;
+ 
++#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_5
+     CFStringRef cfProxyType = (CFStringRef)CFDictionaryGetValue(dict, kCFProxyTypeKey);
+     if (CFStringCompare(cfProxyType, kCFProxyTypeNone, 0) == kCFCompareEqualTo) {
+         proxyType = QNetworkProxy::NoProxy;
+@@ -177,6 +178,7 @@ static QNetworkProxy proxyFromDictionary(CFDictionaryRef dict)
+     if (portNumber) {
+         CFNumberGetValue(portNumber, kCFNumberSInt16Type, &port);
+     }
++#endif
+ 
+     return QNetworkProxy(proxyType, hostName, port, user, password);
+ }
+-- 
+2.12.0
+

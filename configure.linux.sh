@@ -1,0 +1,2 @@
+cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr/local/ \
+	-DWITH_TOOLKIT=Qt4 ..
